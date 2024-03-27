@@ -41,10 +41,9 @@ void loop() {
   //   2.2 If data changes from 0 to 1, it is a STOP condition
 
   unsigned char data = 0;
-  bool first_in_pulse = true;
-  char condition = 0; // 0: normal data, 1: START, 2: STOP
+  char condition = -1; // -1, uninitialized, 0: normal data, 1: START, 2: STOP
 
-  // Read the signals one by one. 
+  // Read the signals one by onerdar. 
   // Each signal is either a bit or a start/stop condition
   while (true) {
     // Read SCL and SDA
@@ -54,37 +53,40 @@ void loop() {
 
     // Do not process SDA if the SCL is low
     if (!scl) {
-      first_in_pulse = true;
-      continue;
-    }
-
-    // SCL is high, process SDA
-    if (!first_in_pulse) {
-      if (data != sda) {
-        if (condition > 0) {
-          // SDA should not change twice during a high SCL
-          Serial.println("ERROR: SDA changes twice during a high SCL");
-        }
-        if (data) {
-          condition = 1;
+      // SCL is low, optionally print SDA/condition and reset the condition 
+      if (condition >= 0) {
+        unsigned long elapsed = millis() - start_time;
+        Serial.print(elapsed);
+        Serial.print(" - ");
+        if (condition == 0) {
+          Serial.print("BIT: ");
+          Serial.println(data);
+        } else if (condition == 1) {
+          Serial.println("START");
         } else {
-          condition = 2;
+          Serial.println("STOP");
         }
       }
-    }
-    data = sda;
-    first_in_pulse = false;
-  
-    unsigned long elapsed = millis() - start_time;
-    Serial.print(elapsed);
-    Serial.print(" - ");
-    if (condition == 0) {
-      Serial.print("BIT: ");
-      Serial.println(data);
-    } else if (condition == 1) {
-      Serial.println("START");
+      condition = -1;
     } else {
-      Serial.println("STOP");
+      // SCL is high, read SDA
+      if (condition >= 0) {
+        if (data != sda) {
+          if (condition > 0) {
+            // SDA should not change twice during a high SCL
+            Serial.println("ERROR: SDA changes twice during a high SCL");
+          } else {
+            if (data) {
+              condition = 1;
+            } else {
+              condition = 2;
+            }
+          }
+        }
+      } else {
+        condition = 0;
+      }
+      data = sda;
     }
   }
 }
