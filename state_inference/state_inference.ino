@@ -11,16 +11,49 @@
 // the sample buffer
 char *buffer;
 unsigned long start_time;
+unsigned long last_print_ts = 0;
+unsigned int print_interval = 2000; // Print every 2 seconds
+unsigned int print_index = 1;
+unsigned int buffer_size = 0;
+unsigned int buffer_limit = 0;
+
+uint16_t availableMemory() {
+  int size = 2048; // start with the most
+  char *buf;
+  while ((buf = (char *) malloc(--size)) == NULL) ;
+  free(buf);
+  return size;
+}
 
 void setup() {
   start_time = millis();
   Serial.begin(115200);
   Serial.println("Monitoring I2C communication...");
-  // buffer = (char *) malloc(2048);
-  // if (buffer == NULL) {
-  //   Serial.println("[ERR] Failed to allocate memory for buffer");
-  //   return;
-  // }
+  int memory_size = availableMemory();
+  buffer_limit = memory_size - 128;
+  buffer = (char *) malloc(buffer_limit);
+  Serial.print("Allocated ");
+  Serial.print(buffer_limit);
+  Serial.println(" bytes for the buffer.");
+}
+
+void print() {
+  for (int i = 0; i < buffer_size; i++) {
+    unsigned char b = buffer[i];
+    unsigned char condition = b >> 4;
+    unsigned char data = b & 0x01;
+    if (condition == 0) {
+      Serial.print("BIT: ");
+      Serial.println(data);
+    } else if (condition == 1) {
+      Serial.println("START");
+    } else if (condition == 2){
+      Serial.println("STOP");
+    } else {
+      Serial.println("ERROR: Unknown condition");
+    }
+  }
+  buffer_size = 0;
 }
 
 void loop() {
@@ -53,18 +86,12 @@ void loop() {
 
     // Do not process SDA if the SCL is low
     if (!scl) {
-      // SCL is low, optionally print SDA/condition and reset the condition 
+      // SCL is low, optionally record SDA/condition and reset the condition 
       if (condition >= 0) {
-        unsigned long elapsed = millis() - start_time;
-        Serial.print(elapsed);
-        Serial.print(" - ");
-        if (condition == 0) {
-          Serial.print("BIT: ");
-          Serial.println(data);
-        } else if (condition == 1) {
-          Serial.println("START");
+        if (buffer_size >= buffer_limit) {
+          Serial.println("ERROR: Buffer overflow");
         } else {
-          Serial.println("STOP");
+          buffer[buffer_size++] = (condition << 4) | data;
         }
       }
       condition = -1;
@@ -87,6 +114,12 @@ void loop() {
         condition = 0;
       }
       data = sda;
+    }
+
+    // Print the data if the interval is reached
+    if (millis() - start_time > print_interval * print_index) {
+      print();
+      print_index++;
     }
   }
 }
